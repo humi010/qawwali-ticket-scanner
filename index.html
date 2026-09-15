@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
+
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0">
 
@@ -38,6 +39,7 @@
     .subtitle {
       margin-top: 0;
       margin-bottom: 20px;
+      font-size: 18px;
     }
 
     #reader {
@@ -45,13 +47,22 @@
       margin: auto;
     }
 
+    #checking {
+      display: none;
+      margin-top: 20px;
+      padding: 15px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
     #result {
       display: none;
       margin-top: 20px;
-      padding: 20px;
+      padding: 22px;
       border-radius: 12px;
       font-size: 20px;
       font-weight: bold;
+      line-height: 1.5;
     }
 
     .valid {
@@ -91,9 +102,14 @@
 
   <div id="reader"></div>
 
+  <div id="checking">
+    Checking ticket...
+  </div>
+
   <div id="result"></div>
 
-  <button id="scanAgain" onclick="restartScanner()">
+  <button id="scanAgain"
+          onclick="restartScanner()">
     Scan Next Ticket
   </button>
 
@@ -102,29 +118,46 @@
 
 <script>
 
-let scanner;
+const BACKEND_URL =
+  "https://script.google.com/macros/s/AKfycbxRQGuDiSuyTUfAUnHxOEH1Z_mF14_DbyZU5PAFG_u-_FOiATxv8Tx9Yiaaxcq5XH7c/exec";
+
+
+let scanner = null;
 let processing = false;
+
 
 function startScanner() {
 
   processing = false;
 
-  document.getElementById("result").style.display = "none";
-  document.getElementById("scanAgain").style.display = "none";
+  document.getElementById("result").style.display =
+    "none";
+
+  document.getElementById("checking").style.display =
+    "none";
+
+  document.getElementById("scanAgain").style.display =
+    "none";
+
 
   scanner = new Html5Qrcode("reader");
 
+
   scanner.start(
+
     {
       facingMode: "environment"
     },
+
     {
       fps: 10,
+
       qrbox: {
         width: 250,
         height: 250
       }
     },
+
 
     function(decodedText) {
 
@@ -134,7 +167,19 @@ function startScanner() {
 
       processing = true;
 
-      scanner.stop().then(function() {
+
+      scanner.stop()
+
+      .then(function() {
+
+        document.getElementById("reader").innerHTML =
+          "";
+
+        checkTicket(decodedText);
+
+      })
+
+      .catch(function() {
 
         checkTicket(decodedText);
 
@@ -142,38 +187,180 @@ function startScanner() {
 
     },
 
+
     function() {
-      // Ignore normal scanning attempts
+      // Normal QR scanning attempts are ignored.
     }
+
   )
 
   .catch(function(error) {
 
+    console.error(error);
+
     showMessage(
-      "invalid",
-      "❌ CAMERA ERROR<br><br>Please allow camera access."
+      "used",
+      "❌ CAMERA ERROR<br><br>" +
+      "Please allow camera access."
     );
 
   });
 }
 
 
+
 function checkTicket(token) {
 
-  /*
-    NEXT STEP:
-    We will connect this to your
-    Google Apps Script ticket checker.
-  */
+  token = String(token || "").trim();
 
-  showMessage(
-    "valid",
-    "📷 QR READ SUCCESSFULLY<br><br>" +
-    "Scanner read the ticket QR."
-  );
 
-  console.log("QR Token:", token);
+  if (!token) {
+
+    showMessage(
+      "invalid",
+      "⚠️ INVALID TICKET<br><br>" +
+      "No QR information detected."
+    );
+
+    return;
+  }
+
+
+  if (!token.startsWith("QN26:")) {
+
+    showMessage(
+      "invalid",
+      "⚠️ INVALID TICKET<br><br>" +
+      "This is not a Qawaali Night ticket."
+    );
+
+    return;
+  }
+
+
+  document.getElementById("checking").style.display =
+    "block";
+
+
+  const body =
+    new URLSearchParams();
+
+  body.append("token", token);
+
+
+  fetch(BACKEND_URL, {
+
+    method: "POST",
+
+    body: body
+
+  })
+
+  .then(function(response) {
+
+    if (!response.ok) {
+      throw new Error(
+        "Server returned " + response.status
+      );
+    }
+
+    return response.json();
+
+  })
+
+  .then(function(response) {
+
+    document.getElementById("checking").style.display =
+      "none";
+
+
+    if (response.status === "VALID") {
+
+      showMessage(
+        "valid",
+
+        "✅ VALID TICKET<br><br>" +
+
+        "ENTRY ALLOWED<br><br>" +
+
+        "Ticket ID: " +
+        escapeHtml(response.ticketId)
+      );
+
+    }
+
+
+    else if (response.status === "USED") {
+
+      showMessage(
+        "used",
+
+        "❌ ALREADY SCANNED<br><br>" +
+
+        "DO NOT ALLOW ENTRY<br><br>" +
+
+        "Ticket ID: " +
+        escapeHtml(response.ticketId)
+      );
+
+    }
+
+
+    else if (response.status === "INVALID") {
+
+      showMessage(
+        "invalid",
+
+        "⚠️ INVALID TICKET<br><br>" +
+
+        escapeHtml(
+          response.message ||
+          "Ticket not recognised."
+        )
+      );
+
+    }
+
+
+    else {
+
+      showMessage(
+        "used",
+
+        "❌ ERROR<br><br>" +
+
+        escapeHtml(
+          response.message ||
+          "Ticket check failed."
+        )
+      );
+
+    }
+
+  })
+
+  .catch(function(error) {
+
+    console.error(error);
+
+    document.getElementById("checking").style.display =
+      "none";
+
+
+    showMessage(
+      "used",
+
+      "❌ CONNECTION ERROR<br><br>" +
+
+      "Could not check the ticket.<br><br>" +
+
+      "Check the internet connection and try again."
+    );
+
+  });
+
 }
+
 
 
 function showMessage(type, message) {
@@ -181,24 +368,61 @@ function showMessage(type, message) {
   const result =
     document.getElementById("result");
 
+
   result.className = type;
+
   result.innerHTML = message;
+
   result.style.display = "block";
+
 
   document.getElementById("scanAgain").style.display =
     "inline-block";
 }
 
 
+
 function restartScanner() {
 
-  document.getElementById("reader").innerHTML = "";
+  document.getElementById("reader").innerHTML =
+    "";
+
+  document.getElementById("result").style.display =
+    "none";
+
+  document.getElementById("checking").style.display =
+    "none";
+
+  document.getElementById("scanAgain").style.display =
+    "none";
+
 
   startScanner();
 }
 
 
-window.onload = startScanner;
+
+function escapeHtml(value) {
+
+  return String(value || "")
+
+    .replace(/&/g, "&amp;")
+
+    .replace(/</g, "&lt;")
+
+    .replace(/>/g, "&gt;")
+
+    .replace(/"/g, "&quot;")
+
+    .replace(/'/g, "&#039;");
+}
+
+
+
+window.addEventListener(
+  "load",
+  startScanner
+);
 
 </script>
 

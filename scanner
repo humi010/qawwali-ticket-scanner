@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <title>Qawaali Night 2026 Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f3f3f3;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    .card {
+      max-width: 500px;
+      margin: 30px auto;
+      background: white;
+      padding: 25px;
+      border-radius: 16px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.15);
+    }
+
+    h1 {
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
+
+    #reader {
+      width: 100%;
+      margin: auto;
+    }
+
+    #result {
+      display: none;
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 12px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .valid {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .used {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .invalid {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    #scanAgain {
+      display: none;
+      margin-top: 18px;
+      padding: 14px 24px;
+      font-size: 17px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <h1>Qawaali Night 2026</h1>
+
+  <p class="subtitle">
+    Staff Ticket Scanner
+  </p>
+
+  <div id="reader"></div>
+
+  <div id="result"></div>
+
+  <button id="scanAgain" onclick="restartScanner()">
+    Scan Next Ticket
+  </button>
+
+</div>
+
+
+<script>
+
+let scanner;
+let processing = false;
+
+function startScanner() {
+
+  processing = false;
+
+  document.getElementById("result").style.display = "none";
+  document.getElementById("scanAgain").style.display = "none";
+
+  scanner = new Html5Qrcode("reader");
+
+  scanner.start(
+    {
+      facingMode: "environment"
+    },
+    {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
+      }
+    },
+
+    function(decodedText) {
+
+      if (processing) {
+        return;
+      }
+
+      processing = true;
+
+      scanner.stop().then(function() {
+
+        checkTicket(decodedText);
+
+      });
+
+    },
+
+    function() {
+      // Ignore normal scanning attempts
+    }
+  )
+
+  .catch(function(error) {
+
+    showMessage(
+      "invalid",
+      "❌ CAMERA ERROR<br><br>Please allow camera access."
+    );
+
+  });
+}
+
+
+function checkTicket(token) {
+
+  /*
+    NEXT STEP:
+    We will connect this to your
+    Google Apps Script ticket checker.
+  */
+
+  showMessage(
+    "valid",
+    "📷 QR READ SUCCESSFULLY<br><br>" +
+    "Scanner read the ticket QR."
+  );
+
+  console.log("QR Token:", token);
+}
+
+
+function showMessage(type, message) {
+
+  const result =
+    document.getElementById("result");
+
+  result.className = type;
+  result.innerHTML = message;
+  result.style.display = "block";
+
+  document.getElementById("scanAgain").style.display =
+    "inline-block";
+}
+
+
+function restartScanner() {
+
+  document.getElementById("reader").innerHTML = "";
+
+  startScanner();
+}
+
+
+window.onload = startScanner;
+
+</script>
+
+</body>
+</html>

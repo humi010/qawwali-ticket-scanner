@@ -1,0 +1,98 @@
+name: Cross-platform scanner final fix
+on:
+  push:
+    paths:
+      - '.github/workflows/cross-platform-scanner-final.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append isolated decoder override without editing login/backend logic
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          tag='CROSS_PLATFORM_QR_V3'
+          if tag in s:
+              raise SystemExit('Already patched')
+          if '</body>' not in s or 'function login' not in s or 'function check' not in s or 'function manual' not in s:
+              raise SystemExit('Known-good application markers missing; refusing edit')
+          addon=r'''<!-- CROSS_PLATFORM_QR_V3 -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+(function(){
+  var oldStart=window.start;
+  window.start=function(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||typeof window.jsQR!=='function'){
+      return oldStart();
+    }
+    try{ busy=false; }catch(e){}
+    var host=document.getElementById('reader');
+    if(!host) return oldStart();
+    host.innerHTML='';
+    var video=document.createElement('video');
+    video.setAttribute('playsinline',''); video.setAttribute('autoplay',''); video.setAttribute('muted','');
+    video.playsInline=true; video.muted=true;
+    video.style.width='100%'; video.style.height='217px'; video.style.objectFit='cover';
+    host.appendChild(video);
+    var canvas=document.createElement('canvas');
+    var ctx=canvas.getContext('2d',{willReadFrequently:true});
+    var stream=null, stopped=false, paused=false, raf=0, last=0, found=false;
+    window.scanner={
+      pause:function(){paused=true;return Promise.resolve();},
+      resume:function(){found=false;paused=false;return Promise.resolve();},
+      stop:function(){stopped=true;paused=true;if(raf)cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(function(t){t.stop()});return Promise.resolve();},
+      clear:function(){host.innerHTML='';}
+    };
+    var constraints={audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}};
+    navigator.mediaDevices.getUserMedia(constraints).then(function(st){
+      stream=st; video.srcObject=st;
+      return video.play();
+    }).then(function(){
+      function tick(ts){
+        if(stopped)return;
+        raf=requestAnimationFrame(tick);
+        if(paused||found||video.readyState<2||ts-last<80)return;
+        last=ts;
+        var w=video.videoWidth,h=video.videoHeight;
+        if(!w||!h)return;
+        var max=960, scale=Math.min(1,max/w);
+        canvas.width=Math.round(w*scale); canvas.height=Math.round(h*scale);
+        ctx.drawImage(video,0,0,canvas.width,canvas.height);
+        try{
+          var im=ctx.getImageData(0,0,canvas.width,canvas.height);
+          var code=window.jsQR(im.data,canvas.width,canvas.height,{inversionAttempts:'attemptBoth'});
+          if(code&&code.data){
+            found=true; paused=true;
+            try{ check(code.data); }catch(err){ found=false; paused=false; }
+          }
+        }catch(e){}
+      }
+      raf=requestAnimationFrame(tick);
+    }).catch(function(){
+      try{ oldStart(); }catch(e){ host.innerHTML='<div style="padding:30px;color:#ff9ba1;text-align:center">Camera could not start. Allow camera access and reload.</div>'; }
+    });
+  };
+})();
+</script>
+'''
+          s=s.replace('</body>',addon+'</body>',1)
+          # Login code is untouched; only appended content is allowed.
+          p.write_text(s)
+          PY
+      - name: Safety checks and commit
+        run: |
+          grep -q 'CROSS_PLATFORM_QR_V3' index.html
+          grep -q 'function login' index.html
+          grep -q 'function check' index.html
+          grep -q 'function manual' index.html
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Add isolated iOS and Android QR decoder without touching login'
+          git push
